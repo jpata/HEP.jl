@@ -9,7 +9,7 @@ immutable FourVector
 end
 
 +(v1::FourVector, v2::FourVector) = FourVector(v1.t+v2.t, v1.x+v2.x, v1.y+v2.y, v1.z+v2.z)
-*(v1::FourVector, a) = FourVector(a * v1.t, a * v1.x, a * v1.y, a*v1.z)
+*(v1::FourVector, a::Real) = FourVector(a * v1.t, a * v1.x, a * v1.y, a*v1.z)
 
 #magnitude
 l2(v::FourVector) = v.t^2-v.x^2-v.y^2-v.z^2
