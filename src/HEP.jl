@@ -29,7 +29,7 @@ function eta(v::FourVector)
     return ct^2 < 1 ? -0.5 * log((1.0-ct)/(1.0+ct)) : sign(v.z)*Inf
 end
 
-#transverse component
+#transverse component (perpendicular)
 perp(v::FourVector) = sqrt(v.x^2 + v.y^2)
 
 #spherical components
@@ -42,7 +42,25 @@ function FourVectorSph(perp, eta, phi, l)
     return FourVector(t, x, y, z)
 end
 
+#calculates the delta R between 2 four momenta
+function deltar(v1::FourVector, v2::FourVector)
+    deta = eta(v1) - eta(v2)
+    dphi = phi(v1) - phi(v2)
+   
+    #bring dphi to -pi...+pi
+    while dphi >= pi
+        dphi -= 2 * pi
+    end
+    
+    while dphi < -pi 
+        dphi += 2 * pi
+    end
+
+    return sqrt(deta^2 + dphi^2)
+end
+
 export FourVector, FourVectorSph
 export l2, l, phi, rho, theta, eta, perp
+export deltar
 export +
 end # module
