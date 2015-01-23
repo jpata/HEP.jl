@@ -83,6 +83,10 @@ contents(h::ErrorHistogram) = h.weights
 edges(h::ErrorHistogram) = h.edges
 
 normalize(h::Histogram) = Histogram(h.edges, h.weights/sum(h.weights))
+function normalize{T<:Real, N, E}(h::ErrorHistogram{T, N, E})
+    sw = sum(h.weights)
+    ErrorHistogram{T, N, E}(h.edges, h.weights/sw, h.weights_sq, h.closed)
+end
 
 function +{T1<:Real, T2<:Real, N, E}(h1::ErrorHistogram{T1, N, E}, h2::ErrorHistogram{T2, N, E})
     @assert ndims(h1) == ndims(h2)
@@ -103,7 +107,29 @@ end
 
 integral(h::ErrorHistogram) = (sum(contents(h)), sqrt(sum(h.weights_sq)))
 
+import Base.mean
+function mean(h::Hist1D)
+    l = 0.0
+    mids = midpoints(h.edges[1][2:end-1])
+    for i=2:nbins(h)[1]-1
+        l += mids[i-1] * h.weights[i]
+    end
+    return l / sum(h.weights)
+end
+
+import Base.std
+function std(h::Hist1D)
+    l = 0.0
+    mids = midpoints(h.edges[1][2:end-1])
+    m = mean(h)
+    for i=2:nbins(h)[1]-1
+        l += (mids[i-1] - m)^2 * h.weights[i] 
+    end
+    return sqrt(l / sum(h.weights))
+end
+
 export nbins, edges, contents, errors, integral
 export push!
+export normalize
 export ErrorHistogram, Hist1D, Hist2D, Hist3D
 export +
