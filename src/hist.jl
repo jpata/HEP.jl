@@ -10,7 +10,7 @@ contents(h::Histogram) = h.weights
 
 integral(h::Histogram) = sum(h.weights)
 
-type ErrorHistogram{T<:Real, N, E}
+type ErrorHistogram{T<:Real, N, E} <: AbstractHistogram{T, N, E}
     edges::E
     weights::Array{T,N}
     weights_sq::Array{T,N}
@@ -57,7 +57,6 @@ function push!{T,E}(h::ErrorHistogram{T,1,E}, x::Real, w::Real)
     end
     h
 end
-push!{T,E}(h::ErrorHistogram{T,1,E}, x::Real) = push!(h,x,one(T))
 
 function push!{T,N}(h::ErrorHistogram{T,N},xs::NTuple{N,Real}, w::Real)
     is = if h.closed == :right
@@ -73,7 +72,6 @@ function push!{T,N}(h::ErrorHistogram{T,N},xs::NTuple{N,Real}, w::Real)
     end
     h
 end
-push!{T,N}(h::ErrorHistogram{T,N},xs::NTuple{N,Real}) = push!(h,xs, one(T))
 
 nbins(h::ErrorHistogram) = map(x->size(x, 1) - 1, edges(h))
 ndims{T, N, E}(h::ErrorHistogram{T, N, E}) = N
