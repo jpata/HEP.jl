@@ -26,9 +26,9 @@ type ErrorHistogram{T<:Real, N, E} <: AbstractHistogram{T, N, E}
     end 
 end
 
-Hist1D = ErrorHistogram{Float64, 1, (Vector{Float64}, )}
-Hist2D = ErrorHistogram{Float64, 2, (Vector{Float64}, Vector{Float64}) }
-Hist3D = ErrorHistogram{Float64, 2, (Vector{Float64}, Vector{Float64}, Vector{Float64})}
+Hist1D = ErrorHistogram{Float64, 1, Tuple{Vector{Float64}, }}
+Hist2D = ErrorHistogram{Float64, 2, Tuple{Vector{Float64}, Vector{Float64}} }
+Hist3D = ErrorHistogram{Float64, 2, Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}}}
 
 function ErrorHistogram(edges...)
     T = Float64

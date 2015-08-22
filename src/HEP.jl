@@ -1,6 +1,7 @@
 module HEP
 
 import Base.convert
+import Base.eta
 
 import Base.+
 import Base.*
@@ -18,7 +19,7 @@ end
 
 #Spherical
 immutable FourVectorSph <: AbstractFourVector
-    perp::Float64 #perpendicular component (e.g. in case of 4-momentum -> pt or transverse mometum)
+    perp::Float64 #perpendicular component (e.g. in case of 4-momentum -> pt or transverse momentum)
     eta::Float64
     phi::Float64
     l::Float64 #length
