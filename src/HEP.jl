@@ -4,6 +4,7 @@ import Base.convert
 import Base.eta
 
 import Base.+
+import Base.-
 import Base.*
 
 #A 4-tuple representing a 4 vector in the natural system of units
@@ -108,197 +109,185 @@ export x, y, z, t
 export deltar
 export +, -, *
 
-include("hist.jl")
-
-#if ROOT is available, create additional ROOT histogram conversion methods
-if isfile(joinpath(Pkg.dir("ROOT"), "src", "ROOT.jl")) && haskey(ENV, "ROOTSYS")
-using ROOT
-
-function to_jl(o::TH1D; error_type=:errors)
-    
-    nb = int64(GetNbinsX(o))
-    #+3 = underflow, overflow, superfluous extra bin
-    conts = zeros(Float64, nb+2)
-    errs = zeros(Float64, nb+2)
-    ents = zeros(Float64, nb+2)
-
-    #underflow low, overflow low, overflow high
-    edges = zeros(Float64, nb+3)
-    for n=0:nb+1
-        conts[n+1] = GetBinContent(o, int32(n))|>float64
-        errs[n+1] = GetBinError(o, int32(n))|>float64
-        #entries[n+1] = GetEntries(h) * conts[n+1]
-        edges[n+1] = GetBinLowEdge(o, int32(n))
-    end
-    
-    if error_type == :errors
-        ents = (conts ./ errs).^2
-        ents[isnan(ents)] = 0.0
-        ents[ents .== Inf] = 1.0
-        #println(hcat(conts, errs, ents, conts./sqrt(ents)))
-    end
-
-    #this works for Poisson bin errors
-    if error_type == :contents
-        ents = conts ./ sum(conts) .* float64(GetEntries(o))
-        ents[isnan(ents)] = 0.0
-    end
-    
-    edges[1] = -Inf
-    edges[nb+2] = edges[nb+1] + GetBinWidth(o, int32(nb))
-    edges[nb+3] = Inf
-    
-    return (edges,), conts, errs
-    
-end
-
-function to_jl(o::TH2D)
-    
-    nx = int64(GetNbinsX(o))
-    ny = int64(GetNbinsY(o))
-    
-    arr = zeros(Float64, nx+2, ny+2)
-    errs = zeros(Float64, nx+2, ny+2)
-    
-    edges_x = zeros(Float64, nx + 3)
-    edges_y = zeros(Float64, ny + 3)
-    
-    for n=0:nx+1
-        #edges_x[n+1] = GetBinLowEdge(o, int32(n))
-        edges_x[n+1] = ROOT.GetBinLowEdgeX(o, int32(n))
-    end
-    for n=0:ny+1
-        #edges_x[n+1] = GetBinLowEdge(o, int32(n))
-        edges_y[n+1] = ROOT.GetBinLowEdgeY(o, int32(n))
-    end
-    for x=0:nx+1
-        for y=0:ny+1
-            arr[x+1, y+1] = GetBinContent(root_cast(TH1, o), int32(x), int32(y))
-            errs[x+1, y+1] = GetBinError(root_cast(TH1, o), int32(x), int32(y))
-        end
-    end
-    edges_x[1] = -Inf
-    edges_x[end] = +Inf
-
-    edges_y[1] = -Inf
-    edges_y[end] = +Inf
-    
-    ents = arr .* GetEntries(o) ./ sum(arr)
-    ents[isnan(ents)] = 0
-    ents = round(ents)
-    return (edges_x, edges_y), arr, errs
-end
-
-function to_jl(o::TH3D)
-    
-    nx = int64(GetNbinsX(o))
-    ny = int64(GetNbinsY(o))
-    nz = int64(GetNbinsZ(o))
-    
-    arr = zeros(Float64, nx+2, ny+2, nz+2)
-    errs = zeros(Float64, nx+2, ny+2, nz+2)
-    
-    edges_x = zeros(Float64, nx + 3)
-    edges_y = zeros(Float64, ny + 3)
-    edges_z = zeros(Float64, nz + 3)
-    
-    for n=0:nx+1
-        #edges_x[n+1] = GetBinLowEdge(o, int32(n))
-        edges_x[n+1] = ROOT.GetBinLowEdgeX(o, int32(n))
-    end
-    for n=0:ny+1
-        #edges_x[n+1] = GetBinLowEdge(o, int32(n))
-        edges_y[n+1] = ROOT.GetBinLowEdgeY(o, int32(n))
-    end
-    for n=0:nz+1
-        #edges_x[n+1] = GetBinLowEdge(o, int32(n))
-        edges_z[n+1] = ROOT.GetBinLowEdgeZ(o, int32(n))
-    end
-    for x=0:nx+1
-        for y=0:ny+1
-            for z=0:nz+1
-                arr[x+1, y+1, z+1] = GetBinContent(root_cast(TH1, o), int32(x), int32(y), int32(z))
-                errs[x+1, y+1, z+1] = GetBinError(root_cast(TH1, o), int32(x), int32(y), int32(z))
-            end
-        end
-    end
-    edges_x[1] = -Inf
-    edges_x[end] = +Inf
-
-    edges_y[1] = -Inf
-    edges_y[end] = +Inf
-
-    edges_z[1] = -Inf
-    edges_z[end] = +Inf
-    
-    ents = arr .* GetEntries(o) ./ sum(arr)
-    ents[isnan(ents)] = 0
-    ents = round(ents)
-    return (edges_x, edges_y, edges_z), arr, errs
-end
-
-function read_file(fn)
-    tf = TFile(fn)
-    kl = GetListOfKeys(tf)
-    
-    hd = Dict()
-    for i=1:length(kl)
-        k = root_cast(TKey, kl[i])
-        kn = k|>GetName|>bytestring
-        o = ReadObj(k);
-        clname = k|>GetClassName|>bytestring|>symbol
-        
-        o = root_cast(eval(clname), o)
-        jo = to_jl(o)
-         
-        #println(jo)
-        
-        #h1 = Histogram(jo[1], jo[2])
-        #h2 = Histogram(jo[1], jo[3])
-
-    #    println(h2)
-        hd[symbol(kn)] = ErrorHistogram{Float64, length(jo[1]), typeof(jo[1])}(jo[1], jo[2], jo[3].^2, :right)
-    #    println(jo)
-        #println(kn, " ", clname, " ", o,)
-    end
-    Close(tf)
-    return hd
-end
+# 
+# function to_jl(o::TH1D; error_type=:errors)
+#     
+#     nb = Int64(GetNbinsX(o))
+#     #+3 = underflow, overflow, superfluous extra bin
+#     conts = zeros(Float64, nb+2)
+#     errs = zeros(Float64, nb+2)
+#     ents = zeros(Float64, nb+2)
+# 
+#     #underflow low, overflow low, overflow high
+#     edges = zeros(Float64, nb+3)
+#     for n=0:nb+1
+#         conts[n+1] = GetBinContent(o, Int32(n)) |> Float64
+#         errs[n+1] = GetBinError(o, Int32(n)) |> Float64
+#         #entries[n+1] = GetEntries(h) * conts[n+1]
+#         edges[n+1] = GetBinLowEdge(o, Int32(n))
+#     end
+#     
+#     if error_type == :errors
+#         ents = (conts ./ errs).^2
+#         ents[isnan(ents)] = 0.0
+#         ents[ents .== Inf] = 1.0
+#         #println(hcat(conts, errs, ents, conts./sqrt(ents)))
+#     end
+# 
+#     #this works for Poisson bin errors
+#     if error_type == :contents
+#         ents = conts ./ sum(conts) .* Float64(GetEntries(o))
+#         ents[isnan(ents)] = 0.0
+#     end
+#     
+#     edges[1] = -Inf
+#     edges[nb+2] = edges[nb+1] + GetBinWidth(o, Int32(nb))
+#     edges[nb+3] = Inf
+#     
+#     return (edges,), conts, errs
+#     
+# end
+# 
+# function to_jl(o::TH2D)
+#     
+#     nx = Int64(GetNbinsX(o))
+#     ny = Int64(GetNbinsY(o))
+#     
+#     arr = zeros(Float64, nx+2, ny+2)
+#     errs = zeros(Float64, nx+2, ny+2)
+#     
+#     edges_x = zeros(Float64, nx + 3)
+#     edges_y = zeros(Float64, ny + 3)
+#     
+#     for n=0:nx+1
+#         #edges_x[n+1] = GetBinLowEdge(o, int32(n))
+#         edges_x[n+1] = ROOT.GetBinLowEdgeX(o, Int32(n))
+#     end
+#     for n=0:ny+1
+#         #edges_x[n+1] = GetBinLowEdge(o, int32(n))
+#         edges_y[n+1] = ROOT.GetBinLowEdgeY(o, Int32(n))
+#     end
+#     for x=0:nx+1
+#         for y=0:ny+1
+#             arr[x+1, y+1] = GetBinContent(root_cast(TH1, o), Int32(x), Int32(y))
+#             errs[x+1, y+1] = GetBinError(root_cast(TH1, o), Int32(x), Int32(y))
+#         end
+#     end
+#     edges_x[1] = -Inf
+#     edges_x[end] = +Inf
+# 
+#     edges_y[1] = -Inf
+#     edges_y[end] = +Inf
+#     
+#     ents = arr .* GetEntries(o) ./ sum(arr)
+#     ents[isnan(ents)] = 0
+#     ents = round(ents)
+#     return (edges_x, edges_y), arr, errs
+# end
+# 
+# function to_jl(o::TH3D)
+#     
+#     nx = Int64(GetNbinsX(o))
+#     ny = Int64(GetNbinsY(o))
+#     nz = Int64(GetNbinsZ(o))
+#     
+#     arr = zeros(Float64, nx+2, ny+2, nz+2)
+#     errs = zeros(Float64, nx+2, ny+2, nz+2)
+#     
+#     edges_x = zeros(Float64, nx + 3)
+#     edges_y = zeros(Float64, ny + 3)
+#     edges_z = zeros(Float64, nz + 3)
+#     
+#     for n=0:nx+1
+#         #edges_x[n+1] = GetBinLowEdge(o, int32(n))
+#         edges_x[n+1] = ROOT.GetBinLowEdgeX(o, Int32(n))
+#     end
+#     for n=0:ny+1
+#         #edges_x[n+1] = GetBinLowEdge(o, int32(n))
+#         edges_y[n+1] = ROOT.GetBinLowEdgeY(o, Int32(n))
+#     end
+#     for n=0:nz+1
+#         #edges_x[n+1] = GetBinLowEdge(o, int32(n))
+#         edges_z[n+1] = ROOT.GetBinLowEdgeZ(o, Int32(n))
+#     end
+#     for x=0:nx+1
+#         for y=0:ny+1
+#             for z=0:nz+1
+#                 arr[x+1, y+1, z+1] = GetBinContent(root_cast(TH1, o), Int32(x), Int32(y), Int32(z))
+#                 errs[x+1, y+1, z+1] = GetBinError(root_cast(TH1, o), Int32(x), Int32(y), Int32(z))
+#             end
+#         end
+#     end
+#     edges_x[1] = -Inf
+#     edges_x[end] = +Inf
+# 
+#     edges_y[1] = -Inf
+#     edges_y[end] = +Inf
+# 
+#     edges_z[1] = -Inf
+#     edges_z[end] = +Inf
+#     
+#     ents = arr .* GetEntries(o) ./ sum(arr)
+#     ents[isnan(ents)] = 0
+#     ents = round(ents)
+#     return (edges_x, edges_y, edges_z), arr, errs
+# end
+# 
+# function read_file(fn)
+#     tf = TFile(fn)
+#     kl = GetListOfKeys(tf)
+#     
+#     hd = Dict()
+#     for i=1:length(kl)
+#         k = root_cast(TKey, kl[i])
+#         kn = k|>GetName|>bytestring
+#         o = ReadObj(k);
+#         clname = k|>GetClassName|>bytestring|>symbol
+#         
+#         o = root_cast(eval(clname), o)
+#         jo = to_jl(o)
+#          
+#         #println(jo)
+#         
+#         #h1 = Histogram(jo[1], jo[2])
+#         #h2 = Histogram(jo[1], jo[3])
+# 
+#     #    println(h2)
+#         hd[symbol(kn)] = ErrorHistogram{Float64, length(jo[1]), typeof(jo[1])}(
+#             jo[1], jo[2], jo[3].^2, :right
+#         )
+#     #    println(jo)
+#         #println(kn, " ", clname, " ", o,)
+#     end
+#     Close(tf)
+#     return hd
+#end
 
 quadsum(arr::AbstractArray) = arr.^2 |> sum |> sqrt
 quadsum(arr::AbstractArray, n::Int64) = sum(arr.^2, n) |> sqrt
+# 
+# import Base.sum
+# function sum{T<:Real, N, E}(h::ErrorHistogram{T,N,E}, n::Int64)
+#     inds = [1:N]
+#     splice!(inds, n)
+#     newedges = deepcopy(h.edges[inds])
+#     dims = map(x->size(x)[1]-1, newedges)
+#     #println(newedges, " ", dims)
+#     return ErrorHistogram{T, N-1, typeof(newedges)}(
+#         newedges, reshape(sum(h.weights, n), dims...), reshape(sum(sqrt(h.weights_sq), n).^2, dims...), :right
+#     )
+# end
+# 
+# import Base.getindex
+# function getindex{T<:Real, N, E}(h::ErrorHistogram{T, N, E}, inds...)
+#     newinds = Any[]
+#     for i in inds
+#         push!(newinds, i.start:i.stop+1)
+#     end
+#     edgs = tuple([h.edges[i][newinds[i]] for i=1:length(newinds)]...)
+#     return ErrorHistogram{T, N, E}(edgs, h.weights[inds...], h.weights_sq[inds...], :right)
+# end
 
-import Base.sum
-function sum{T<:Real, N, E}(h::ErrorHistogram{T,N,E}, n::Int64)
-    inds = [1:N]
-    splice!(inds, n)
-    newedges = deepcopy(h.edges[inds])
-    dims = map(x->size(x)[1]-1, newedges)
-    #println(newedges, " ", dims)
-    return ErrorHistogram{T, N-1, typeof(newedges)}(
-        newedges, reshape(sum(h.weights, n), dims...), reshape(sum(sqrt(h.weights_sq), n).^2, dims...), :right
-    )
-end
-
-import Base.getindex
-function getindex{T<:Real, N, E}(h::ErrorHistogram{T, N, E}, inds...)
-    newinds = Any[]
-    for i in inds
-        push!(newinds, i.start:i.stop+1)
-    end
-    edgs = tuple([h.edges[i][newinds[i]] for i=1:length(newinds)]...)
-    return ErrorHistogram{T, N, E}(edgs, h.weights[inds...], h.weights_sq[inds...], :right)
-end
-
-import Base.size
-size(h::ErrorHistogram, n) = size(h.weights, n)
-import Base.ndims
-ndims(h::ErrorHistogram) = length(h.edges)
-
-export to_jl, read_file
-
-else
-warn("Could not import ROOT.jl, ROOT functionality not defined.")
-end
+#export to_jl, read_file
 
 end # module
